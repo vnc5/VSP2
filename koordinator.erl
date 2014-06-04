@@ -10,7 +10,7 @@
 -export([start/1]).
 
 start(NameserviceNode) ->
-  {Name, NameserviceNodeName, Rt, GgtCount, Ttw, Ttt} = read_config([name, nameservice, rt, GgtCount, ttw, ttt], "koordinator.cfg"),
+  {Name, NameserviceNodeName, Rt, GgtCount, Ttw, Ttt} = read_config([name, nameservice, rt, ggtcount, ttw, ttt], "koordinator.cfg"),
   net_adm:ping(NameserviceNode),
   Nameservice = global:whereis_name(NameserviceNodeName),
   register_koordinator(Name, Nameservice, Rt, GgtCount, Ttw, Ttt).
