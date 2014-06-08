@@ -49,31 +49,45 @@ wait_for_first_mi(Name, NeightbourList, Koordinator) ->
   receive
     {?SETPMI, Mi} ->
       log(Name, "ggt:~p (pre_process)::receiving set_pmi ~b:(~s)~n", [Name, Mi, timeMilliSecond()]),
-      process(Name, Mi, NeightbourList, Koordinator)
+      {ok,Timer} = timer:apply_after(timer:seconds(5), starteTerminierungsAbstimmung, [Name, NeightbourList]),
+      process(Name, Mi, NeightbourList, Koordinator, now(), Timer)
   end.
 
-process(Name, Mi, NeightbourList, Koordinator) ->
+process(Name, Mi, NeightbourList, Koordinator, StartingTime, Timer) ->
   receive
     {?SETPMI, MiNeu} ->
+      timer:cancel(Timer),
+      {ok,Timer} = timer:apply_after(timer:seconds(5), starteTerminierungsAbstimmung, [Name, NeightbourList]),
       log(Name, "ggt:~p (pre_process)::receiving set_pmi ~b:(~s)~n", [Name, MiNeu, timeMilliSecond()]),
-      process(Name, MiNeu, NeightbourList, Koordinator);
+      process(Name, MiNeu, NeightbourList, Koordinator, StartingTime, Timer);
     {?SEND, Num} ->
+      timer:cancel(Timer),
       log(Name, "ggt:~p (pre_process)::receiving SEND with num ~b:(~s)~n", [Name, Num, timeMilliSecond()]),
+      workHard(),
       if Num < Mi ->
         MiNeu = ((Mi-1) rem Num) + 1,
         log(Name, "ggt:~p Neues Berechnetes Mi ~b:(~s)~n", [Name, MiNeu, timeMilliSecond()]),
         contactNeightbours(Name,NeightbourList, MiNeu),
-        Koordinator ! {?BRIEFME, Name,MiNeu, timeMilliSecond()}
+        Koordinator ! {?BRIEFME, Name, MiNeu, timeMilliSecond()}
       ;
       true ->
         MiNeu = Mi,
         log(Name, "ggt:~p Mi bleibt unverändert. ~b:(~s)~n", [Name, MiNeu, timeMilliSecond()])
       end,
-      process(Name, MiNeu, NeightbourList, Koordinator);
+      {ok,Timer} = timer:apply_after(timer:seconds(5), starteTerminierungsAbstimmung, [Name, NeightbourList]),
+      process(Name, MiNeu, NeightbourList, Koordinator, StartingTime, Timer);
     {?KILL} ->
-      terminate(Name, timeMilliSecond())
-
-end.
+      terminate(Name, timeMilliSecond());
+    {?VOTE, Initiator} ->
+      log(Name, "ggt:~p VOTE empfangen. ~b:(~s)~n", [Name, Mi, timeMilliSecond()]),
+      if Initiator /= Name ->
+        terminierungsAbstimmung(Name, Initiator, NeightbourList);
+      true ->
+        Koordinator ! {?BRIEFTERM, Name, Mi, timeMilliSecond()}
+      end,
+      process(Name, Mi, NeightbourList, Koordinator, StartingTime, Timer)
+  end
+.
 
 contactNeightbours(_,[],_) -> ok;
 contactNeightbours(Name ,NeightbourList, Mi) ->
@@ -85,5 +99,21 @@ contactNeightbours(Name ,NeightbourList, Mi) ->
 
 terminate(Name, Time) ->
   log(Name, "ggt:~p::ggT is terminated:(~s)~n", [Name, Time])
+.
+
+starteTerminierungsAbstimmung(Name,NeightbourList) ->
+  terminierungsAbstimmung(Name, Name, NeightbourList)
+.
+
+terminierungsAbstimmung(Name,Initiator,NeightbourList) ->
+  log(Name, "ggt:~p::ggT starteTerminierungsAbstimmung:(~s)~n", [Name, timeMilliSecond()]),
+  {Left, _} = NeightbourList,
+  Left ! {?VOTE,Initiator}
+.
+
+workHard() ->
+  {A1,A2,A3} = now(),
+  random:seed(A1, A2, A3),
+  timer:sleep(timer:seconds(random:uniform()))
 .
 
