@@ -11,7 +11,7 @@
 start(Name, Ttw, Ttw, Number, KoordinatorName) ->
   net_adm:ping(asdf),
   Nameservice = global:whereis_name(asdf),
-  Nameservice ! {self(), {?LOOKUP, "Koordinator", node()}},
+  Nameservice ! {self(), {?LOOKUP, "Koordinator"}},
   receive
     {?LOOKUP_RES, ?UNDEFINED} ->
       log(Name, "ggt:~p (initial)::Koordinator not known. Perhabs I should retry...(~s)", [Name, timeMilliSecond()]),
