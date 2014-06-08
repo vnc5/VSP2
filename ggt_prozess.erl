@@ -11,8 +11,15 @@
 start(Name, Ttw, Ttw, Number, KoordinatorName) ->
   net_adm:ping(asdf),
   Nameservice = global:whereis_name(asdf),
-  Koordinator = global:whereis_name(KoordinatorName),
-  register_ggt_process(Name, Nameservice, Koordinator).
+  Nameservice ! {self(), {?LOOKUP, "Koordinator", node()}},
+  receive
+    {?LOOKUP_RES, ?UNDEFINED} ->
+      log(Name, "ggt:~p (initial)::Koordinator not known. Perhabs I should retry...(~s)", [Name, timeMilliSecond()]),
+      start(Name, Ttw, Ttw, Number, KoordinatorName);
+    {?LOOKUP_RES, Result} ->
+      log(Name, "ggt:~p (initial)::Koordinator retrieved:(~s)", [Name, timeMilliSecond()]),
+      register_ggt_process(Name, Nameservice, Result)
+  end.
 
 register_ggt_process(Name, Nameservice, Koordinator) ->
   register(Name, self()),
@@ -21,10 +28,10 @@ register_ggt_process(Name, Nameservice, Koordinator) ->
   receive
     {?REBIND_RES, ok} ->
       log(Name, "ggt: ~p bound as service ~p:(~s)~n", [self(), {Name, node()}, timeMilliSecond()]),
-      coord ! {?CHECKIN, Name},
+      Koordinator ! {?CHECKIN, Name},
       log(Name, "ggt:~p (initial)::~p checkin in to coordinator {coord,coord@Mine} as service ~p:(~s)~n", [Name, self(), Name, timeMilliSecond()]),
       wait_for_neighbours(Name, Nameservice, Koordinator);
-      {?WHATSON} ->
+    {?WHATSON} ->
         whatson(Name, Koordinator, nok),
         register_ggt_process(Name, Nameservice, Koordinator)
   end.
