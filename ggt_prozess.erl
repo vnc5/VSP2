@@ -49,7 +49,7 @@ wait_for_first_mi(Name, NeightbourList, Koordinator) ->
   receive
     {?SETPMI, Mi} ->
       log(Name, "ggt:~p (pre_process)::receiving set_pmi ~b:(~s)~n", [Name, Mi, timeMilliSecond()]),
-      {ok,Timer} = timer:apply_after(timer:seconds(5), starteTerminierungsAbstimmung, [Name, NeightbourList]),
+      {ok,Timer} = timer:apply_after(timer:seconds(5), ggt_prozess, starteTerminierungsAbstimmung, [Name, NeightbourList]),
       process(Name, Mi, NeightbourList, Koordinator, now(), Timer)
   end.
 
@@ -57,7 +57,7 @@ process(Name, Mi, NeightbourList, Koordinator, StartingTime, Timer) ->
   receive
     {?SETPMI, MiNeu} ->
       timer:cancel(Timer),
-      {ok,Timer} = timer:apply_after(timer:seconds(5), starteTerminierungsAbstimmung, [Name, NeightbourList]),
+      {ok,Timer} = timer:apply_after(timer:seconds(5), ggt_prozess, starteTerminierungsAbstimmung, [Name, NeightbourList]),
       log(Name, "ggt:~p (pre_process)::receiving set_pmi ~b:(~s)~n", [Name, MiNeu, timeMilliSecond()]),
       process(Name, MiNeu, NeightbourList, Koordinator, StartingTime, Timer);
     {?SEND, Num} ->
@@ -74,7 +74,7 @@ process(Name, Mi, NeightbourList, Koordinator, StartingTime, Timer) ->
         MiNeu = Mi,
         log(Name, "ggt:~p Mi bleibt unverändert. ~b:(~s)~n", [Name, MiNeu, timeMilliSecond()])
       end,
-      {ok,Timer} = timer:apply_after(timer:seconds(5), starteTerminierungsAbstimmung, [Name, NeightbourList]),
+      {ok,Timer} = timer:apply_after(timer:seconds(5), ggt_prozess, starteTerminierungsAbstimmung, [Name, NeightbourList]),
       process(Name, MiNeu, NeightbourList, Koordinator, StartingTime, Timer);
     {?KILL} ->
       terminate(Name, timeMilliSecond());
@@ -108,7 +108,7 @@ starteTerminierungsAbstimmung(Name,NeightbourList) ->
 terminierungsAbstimmung(Name,Initiator,NeightbourList) ->
   log(Name, "ggt:~p::ggT starteTerminierungsAbstimmung:(~s)~n", [Name, timeMilliSecond()]),
   {Left, _} = NeightbourList,
-  Left ! {?VOTE,Initiator}
+  Left ! {?VOTE, Initiator}
 .
 
 workHard() ->
