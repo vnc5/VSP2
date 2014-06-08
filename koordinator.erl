@@ -44,7 +44,7 @@ receive_register_requests(Name, Nameservice, GgtCount, Ttw, Ttt, GgtProcs) ->
       create_ggt_ring(Name, GgtProcs),
       % ??? "Starten einer Berechnung über die Nachricht {calc target}"
       send_after(10000, self(), {?CALCSTART, 5}),
-      ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs)
+      ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, false, 0)
   end.
 
 lookup(Nameservice, GgtName) ->
@@ -73,7 +73,7 @@ create_ggt_ring(Name, GgtProcs, Index) ->
   Current ! {?NEIGHBOURS, Left, Right},
   create_ggt_ring(Name, GgtProcs, Index - 1).
 
-ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs) ->
+ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Toggle, LowestNumber) ->
   receive
     {?CALCSTART, Target} ->
       log(Name, "state(ready) starting new calculation with target ~b:(~s)~n", [Target, timeMilliSecond()]),
@@ -81,29 +81,38 @@ ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs) ->
       log(Name, "state(ready) calculated mis:\"~s\":(~s)~n", [list2String(Mis), timeMilliSecond()]),
       set_start_values(Name, GgtProcs, Mis),
       trigger_calculation(Name, shuffle(GgtProcs), Target, max(round(length(GgtProcs) * 0.15), 2)),
-      ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs);
+      ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Toggle, LowestNumber);
     {?BRIEFME, {GgtName, GgtMi, GgtTime}} ->
       log(Name, "state(ready) ggt '~s' sent new mi=~b (cTime=\"~s\"):(~s)~n", [GgtName, GgtMi, GgtTime, timeMilliSecond()]),
-      ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs);
+      ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Toggle, LowestNumber);
     {?BRIEFTERM, {GgtName, GgtMi, GgtTime}, From} ->
-      log(Name, "state(ready) ggt '~s' sent termination with ggt=~b (cTime=\"~s\"):(~s)~n", [GgtName, GgtMi, GgtTime, timeMilliSecond()]),
       if
-        GgtMi > 5 ->
+        LowestNumber == 0 ->
+          NewLowestNumber = GgtMi;
+        true ->
+          NewLowestNumber = min(GgtMi, LowestNumber)
+      end,
+      if
+        GgtMi > NewLowestNumber ->
           log(Name, "state(ready) ggt '~s' sent wrong termination with ggt=~b (cTime=\"~s\"):(~s)~n", [GgtName, GgtMi, GgtTime, timeMilliSecond()]),
           if
-            true ->
-              From ! {?SEND, 5};
+            Toggle == true ->
+              log(Name, "state(ready) correction flag is set::sending minimal reported ggt=~b to ~p:(~s)~n", [NewLowestNumber, From, timeMilliSecond()]),
+              From ! {?SEND, NewLowestNumber};
             true ->
               ok
           end;
-        true -> ok
+        true ->
+          log(Name, "state(ready) ggt '~s' sent termination with ggt=~b (cTime=\"~s\"):(~s)~n", [GgtName, GgtMi, GgtTime, timeMilliSecond()])
       end,
-      ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs);
+      ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Toggle, NewLowestNumber);
     ?TOGGLE ->
-      ok;
+      NewToggle = Toggle =/= true,
+      log(Name, "state(ready) received toggle::switching correction flag to ~s:(~s)~n", [NewToggle, timeMilliSecond()]),
+      ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, NewToggle, LowestNumber);
     ?WHATSON ->
       send_whats_on(Name, GgtProcs),
-      ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs);
+      ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Toggle, LowestNumber);
     ?RESET ->
       log(Name, "state(ready) received reset:(~s)~n", [timeMilliSecond()]),
       log(Name, "state(ready) sending kill to ggt procs in ~s:(~s)~n", [list2String(GgtProcs), timeMilliSecond()]),
@@ -111,7 +120,9 @@ ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs) ->
       log(Name, "state(ready) resetting wggt/corr_flag/min_reported_mi/ggt_proc_list to defaults:(~s)~n", [timeMilliSecond()]),
 
       log(Name, "state(ready) reset completed::transition to 'register' state:(~s)~n", [timeMilliSecond()]),
-      receive_register_requests(Name, Nameservice, GgtCount, Ttw, Ttt, GgtProcs);
+      {NewRt, NewGgtCount, NewTtw, NewTtt} = read_config([rt, ggtcount, ttw, ttt], "koordinator.cfg"),
+      send_after(NewRt * 1000, self(), ?STEP),
+      receive_register_requests(Name, Nameservice, NewGgtCount, NewTtw, NewTtt, []);
     ?KILL ->
       log(Name, "state(ready) received 'kill' sending kill to all ggt processes:(~s)~n", [timeMilliSecond()]),
       log(Name, "state(ready) sending kill to ggt procs in ~s:(~s)~n", [list2String(GgtProcs), timeMilliSecond()]),
