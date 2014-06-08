@@ -23,7 +23,10 @@ register_ggt_process(Name, Nameservice, Koordinator) ->
       log(Name, "ggt: ~p bound as service ~p:(~s)~n", [self(), {Name, node()}, timeMilliSecond()]),
       coord ! {?CHECKIN, Name},
       log(Name, "ggt:~p (initial)::~p checkin in to coordinator {coord,coord@Mine} as service ~p:(~s)~n", [Name, self(), Name, timeMilliSecond()]),
-      wait_for_neighbours(Name, Nameservice, Koordinator)
+      wait_for_neighbours(Name, Nameservice, Koordinator);
+      {?WHATSON} ->
+        whatson(Name, Koordinator, nok),
+        register_ggt_process(Name, Nameservice, Koordinator)
   end.
 
 wait_for_neighbours(Name, Nameservice, Koordinator) ->
@@ -34,7 +37,10 @@ wait_for_neighbours(Name, Nameservice, Koordinator) ->
       RightNode = lookup(Nameservice, Right),
       log(Name, "ggt:~p (initial)::initializing neighbours::l=~p(~p), r=~p(~p):(~s)~n", [Name, Left, LeftNode, Right, RightNode, timeMilliSecond()]),
       log(Name, "ggt:~p (initial)::transition to pre process state: left neighbour=~p, right neigbour=~p:(~s)~n", [Name, Left, Right, timeMilliSecond()]),
-      wait_for_first_mi(Name, [LeftNode, Right], Koordinator)
+      wait_for_first_mi(Name, [LeftNode, Right], Koordinator);
+    {?WHATSON} ->
+      whatson(Name, Koordinator, nok),
+      wait_for_neighbours(Name, Nameservice, Koordinator)
   end.
 
 lookup(Nameservice, GgtName) ->
@@ -50,7 +56,10 @@ wait_for_first_mi(Name, NeightbourList, Koordinator) ->
     {?SETPMI, Mi} ->
       log(Name, "ggt:~p (pre_process)::receiving set_pmi ~b:(~s)~n", [Name, Mi, timeMilliSecond()]),
       {ok,Timer} = timer:apply_after(timer:seconds(5), ggt_prozess, starteTerminierungsAbstimmung, [Name, NeightbourList]),
-      process(Name, Mi, NeightbourList, Koordinator, now(), Timer)
+      process(Name, Mi, NeightbourList, Koordinator, now(), Timer);
+    {?WHATSON} ->
+      whatson(Name, Koordinator, nok),
+      wait_for_first_mi(Name, NeightbourList, Koordinator)
   end.
 
 process(Name, Mi, NeightbourList, Koordinator, StartingTime, Timer) ->
@@ -78,6 +87,12 @@ process(Name, Mi, NeightbourList, Koordinator, StartingTime, Timer) ->
       process(Name, MiNeu, NeightbourList, Koordinator, StartingTime, Timer);
     {?KILL} ->
       terminate(Name, timeMilliSecond());
+    {?WHATSON} ->
+      whatson(Name, Koordinator, ok),
+      process(Name, Mi, NeightbourList, Koordinator, StartingTime, Timer);
+    {?TELLMI, From} ->
+      From ! {?TELLMI_RES, Mi},
+      process(Name, Mi, NeightbourList, Koordinator, StartingTime, Timer);
     {?VOTE, Initiator} ->
       log(Name, "ggt:~p VOTE empfangen. ~b:(~s)~n", [Name, Mi, timeMilliSecond()]),
       if Initiator /= Name ->
@@ -115,5 +130,10 @@ workHard() ->
   {A1,A2,A3} = now(),
   random:seed(A1, A2, A3),
   timer:sleep(timer:seconds(random:uniform()))
+.
+
+whatson(Name, Koordinator, Status) ->
+  log(Name, "ggt:~p::ggT WhatsOnAbfrage erhalten:(~s)~n", [Name, timeMilliSecond()]),
+  Koordinator ! {?WHATSON_RES, Status}
 .
 
