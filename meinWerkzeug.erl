@@ -5,7 +5,7 @@
 -import(file, [consult/1]).
 -include("messages.hrl").
 
--export([read_config/2, lookup/2]).
+-export([read_config/2, lookup/2, timestamp_micro/0]).
 
 read_config(Keys, FileName) ->
   {ok, File} = consult(FileName),
@@ -22,3 +22,7 @@ lookup(Nameservice, Name) ->
     {?REBIND_RES, ServiceAtNode} ->
       ServiceAtNode
   end.
+
+timestamp_micro() ->
+  {MegaSecs, Secs, MicroSecs} = now(),
+  (MegaSecs * 1000000 + Secs) * 1000000 + MicroSecs.
