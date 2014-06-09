@@ -3,37 +3,25 @@
 
 -import(tools, [log/3]).
 -import(werkzeug, [timeMilliSecond/0]).
+-import(meinWerkzeug, [lookup/2]).
 -include("messages.hrl").
 -include("constants.hrl").
 
 -export([start/5]).
 
-start(Name, Ttw, Ttw, Number, KoordinatorName) ->
-  net_adm:ping(asdf),
-  Nameservice = global:whereis_name(asdf),
-  Nameservice ! {self(), {?LOOKUP, "Koordinator"}},
-  receive
-    {?LOOKUP_RES, ?UNDEFINED} ->
-      log(Name, "ggt:~p (initial)::Koordinator not known. Perhabs I should retry...(~s)", [Name, timeMilliSecond()]),
-      start(Name, Ttw, Ttw, Number, KoordinatorName);
-    {?LOOKUP_RES, Result} ->
-      log(Name, "ggt:~p (initial)::Koordinator retrieved:(~s)", [Name, timeMilliSecond()]),
-      register_ggt_process(Name, Nameservice, Result)
-  end.
+start(Name, Nameservice, Coord, Ttw, Ttw) ->
+  register_ggt_process(Name, Nameservice, Coord).
 
-register_ggt_process(Name, Nameservice, Koordinator) ->
+register_ggt_process(Name, Nameservice, Coord) ->
   register(Name, self()),
   log(Name, "ggt:locally registering ~p; name is '~p':(~s)~n", [self(), Name, timeMilliSecond()]),
   Nameservice ! {self(), {?REBIND, Name, node()}},
   receive
     {?REBIND_RES, ok} ->
       log(Name, "ggt: ~p bound as service ~p:(~s)~n", [self(), {Name, node()}, timeMilliSecond()]),
-      Koordinator ! {?CHECKIN, Name},
+      Coord ! {?CHECKIN, Name},
       log(Name, "ggt:~p (initial)::~p checkin in to coordinator {coord,coord@Mine} as service ~p:(~s)~n", [Name, self(), Name, timeMilliSecond()]),
-      wait_for_neighbours(Name, Nameservice, Koordinator);
-    {?WHATSON} ->
-        whatson(Name, Koordinator, nok),
-        register_ggt_process(Name, Nameservice, Koordinator)
+      wait_for_neighbours(Name, Nameservice, Coord)
   end.
 
 wait_for_neighbours(Name, Nameservice, Koordinator) ->
@@ -44,17 +32,7 @@ wait_for_neighbours(Name, Nameservice, Koordinator) ->
       RightNode = lookup(Nameservice, Right),
       log(Name, "ggt:~p (initial)::initializing neighbours::l=~p(~p), r=~p(~p):(~s)~n", [Name, Left, LeftNode, Right, RightNode, timeMilliSecond()]),
       log(Name, "ggt:~p (initial)::transition to pre process state: left neighbour=~p, right neigbour=~p:(~s)~n", [Name, Left, Right, timeMilliSecond()]),
-      wait_for_first_mi(Name, [LeftNode, Right], Koordinator);
-    {?WHATSON} ->
-      whatson(Name, Koordinator, nok),
-      wait_for_neighbours(Name, Nameservice, Koordinator)
-  end.
-
-lookup(Nameservice, GgtName) ->
-  Nameservice ! {self(), {?LOOKUP, GgtName}},
-  receive
-    {?REBIND_RES, ServiceAtNode} ->
-      ServiceAtNode
+      wait_for_first_mi(Name, [LeftNode, Right], Koordinator)
   end.
 
 wait_for_first_mi(Name, NeightbourList, Koordinator) ->
@@ -62,7 +40,7 @@ wait_for_first_mi(Name, NeightbourList, Koordinator) ->
   receive
     {?SETPMI, Mi} ->
       log(Name, "ggt:~p (pre_process)::receiving set_pmi ~b:(~s)~n", [Name, Mi, timeMilliSecond()]),
-      {ok,Timer} = timer:apply_after(timer:seconds(5), ggt_prozess, starteTerminierungsAbstimmung, [Name, NeightbourList]),
+      {ok, Timer} = timer:apply_after(timer:seconds(5), ggt_prozess, starteTerminierungsAbstimmung, [Name, NeightbourList]),
       process(Name, Mi, NeightbourList, Koordinator, now(), Timer);
     {?WHATSON} ->
       whatson(Name, Koordinator, nok),
@@ -73,7 +51,7 @@ process(Name, Mi, NeightbourList, Koordinator, StartingTime, Timer) ->
   receive
     {?SETPMI, MiNeu} ->
       timer:cancel(Timer),
-      {ok,Timer} = timer:apply_after(timer:seconds(5), ggt_prozess, starteTerminierungsAbstimmung, [Name, NeightbourList]),
+      {ok, Timer} = timer:apply_after(timer:seconds(5), ggt_prozess, starteTerminierungsAbstimmung, [Name, NeightbourList]),
       log(Name, "ggt:~p (pre_process)::receiving set_pmi ~b:(~s)~n", [Name, MiNeu, timeMilliSecond()]),
       process(Name, MiNeu, NeightbourList, Koordinator, StartingTime, Timer);
     {?SEND, Num} ->
@@ -81,16 +59,16 @@ process(Name, Mi, NeightbourList, Koordinator, StartingTime, Timer) ->
       log(Name, "ggt:~p (pre_process)::receiving SEND with num ~b:(~s)~n", [Name, Num, timeMilliSecond()]),
       workHard(),
       if Num < Mi ->
-        MiNeu = ((Mi-1) rem Num) + 1,
+        MiNeu = ((Mi - 1) rem Num) + 1,
         log(Name, "ggt:~p Neues Berechnetes Mi ~b:(~s)~n", [Name, MiNeu, timeMilliSecond()]),
-        contactNeightbours(Name,NeightbourList, MiNeu),
+        contactNeightbours(Name, NeightbourList, MiNeu),
         Koordinator ! {?BRIEFME, Name, MiNeu, timeMilliSecond()}
       ;
-      true ->
-        MiNeu = Mi,
-        log(Name, "ggt:~p Mi bleibt unverändert. ~b:(~s)~n", [Name, MiNeu, timeMilliSecond()])
+        true ->
+          MiNeu = Mi,
+          log(Name, "ggt:~p Mi bleibt unverändert. ~b:(~s)~n", [Name, MiNeu, timeMilliSecond()])
       end,
-      {ok,Timer} = timer:apply_after(timer:seconds(5), ggt_prozess, starteTerminierungsAbstimmung, [Name, NeightbourList]),
+      {ok, Timer} = timer:apply_after(timer:seconds(5), ggt_prozess, starteTerminierungsAbstimmung, [Name, NeightbourList]),
       process(Name, MiNeu, NeightbourList, Koordinator, StartingTime, Timer);
     {?KILL} ->
       terminate(Name, timeMilliSecond());
@@ -104,43 +82,35 @@ process(Name, Mi, NeightbourList, Koordinator, StartingTime, Timer) ->
       log(Name, "ggt:~p VOTE empfangen. ~b:(~s)~n", [Name, Mi, timeMilliSecond()]),
       if Initiator /= Name ->
         terminierungsAbstimmung(Name, Initiator, NeightbourList);
-      true ->
-        Koordinator ! {?BRIEFTERM, Name, Mi, timeMilliSecond()}
+        true ->
+          Koordinator ! {?BRIEFTERM, Name, Mi, timeMilliSecond()}
       end,
       process(Name, Mi, NeightbourList, Koordinator, StartingTime, Timer)
-  end
-.
+  end.
 
-contactNeightbours(_,[],_) -> ok;
-contactNeightbours(Name ,NeightbourList, Mi) ->
+contactNeightbours(_, [], _) -> ok;
+contactNeightbours(Name, NeightbourList, Mi) ->
   [Proc, Tail] = NeightbourList,
-    Proc ! {?SEND, Mi},
+  Proc ! {?SEND, Mi},
   log(Name, "state(ready) setting initial mi=~b for ~p:(~s)~n", [Mi, Proc, timeMilliSecond()]),
-  contactNeightbours(Name,Tail, Mi)
-.
+  contactNeightbours(Name, Tail, Mi).
 
 terminate(Name, Time) ->
-  log(Name, "ggt:~p::ggT is terminated:(~s)~n", [Name, Time])
-.
+  log(Name, "ggt:~p::ggT is terminated:(~s)~n", [Name, Time]).
 
-starteTerminierungsAbstimmung(Name,NeightbourList) ->
-  terminierungsAbstimmung(Name, Name, NeightbourList)
-.
+starteTerminierungsAbstimmung(Name, NeightbourList) ->
+  terminierungsAbstimmung(Name, Name, NeightbourList).
 
-terminierungsAbstimmung(Name,Initiator,NeightbourList) ->
+terminierungsAbstimmung(Name, Initiator, NeightbourList) ->
   log(Name, "ggt:~p::ggT starteTerminierungsAbstimmung:(~s)~n", [Name, timeMilliSecond()]),
   {Left, _} = NeightbourList,
-  Left ! {?VOTE, Initiator}
-.
+  Left ! {?VOTE, Initiator}.
 
 workHard() ->
-  {A1,A2,A3} = now(),
+  {A1, A2, A3} = now(),
   random:seed(A1, A2, A3),
-  timer:sleep(timer:seconds(random:uniform()))
-.
+  timer:sleep(timer:seconds(random:uniform())).
 
 whatson(Name, Koordinator, Status) ->
   log(Name, "ggt:~p::ggT WhatsOnAbfrage erhalten:(~s)~n", [Name, timeMilliSecond()]),
-  Koordinator ! {?WHATSON_RES, Status}
-.
-
+  Koordinator ! {?WHATSON_RES, Status}.

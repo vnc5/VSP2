@@ -3,7 +3,7 @@
 
 -import(tools, [log/3]).
 -import(werkzeug, [timeMilliSecond/0, bestimme_mis/2, list2String/1]).
--import(meinWerkzeug, [read_config/2, shuffle/1]).
+-import(meinWerkzeug, [read_config/2, shuffle/1, lookup/2]).
 -include("messages.hrl").
 -include("constants.hrl").
 
@@ -16,7 +16,7 @@ start(NameserviceNode) ->
   register_koordinator(Name, Nameservice, Rt, GgtCount, Ttw, Ttt).
 
 register_koordinator(Name, Nameservice, Rt, GgtCount, Ttw, Ttt) ->
-  Nameservice ! {self(), {?REBIND, meindienst, node()}},
+  Nameservice ! {self(), {?REBIND, Name, node()}},
   receive
     {?REBIND_RES, ok} ->
       log(Name, "state('pre init') seccessfully bound ~p with NS nameservice (remote refNS= ~p):(~s)~n", [{Name, node()}, Nameservice, timeMilliSecond()]),
@@ -45,13 +45,6 @@ receive_register_requests(Name, Nameservice, GgtCount, Ttw, Ttt, GgtProcs) ->
       % ??? "Starten einer Berechnung über die Nachricht {calc target}"
       send_after(10000, self(), {?CALCSTART, 5}),
       ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, false, 0)
-  end.
-
-lookup(Nameservice, GgtName) ->
-  Nameservice ! {self(), {?LOOKUP, GgtName}},
-  receive
-    {?REBIND_RES, ServiceAtNode} ->
-      ServiceAtNode
   end.
 
 create_ggt_ring(Name, GgtProcs) ->
