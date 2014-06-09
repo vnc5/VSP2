@@ -2,8 +2,8 @@
 -author("vince").
 
 -import(tools, [log/3]).
--import(werkzeug, [timeMilliSecond/0, bestimme_mis/2, list2String/1]).
--import(meinWerkzeug, [read_config/2, shuffle/1, lookup/2]).
+-import(werkzeug, [timeMilliSecond/0, bestimme_mis/2, list2String/1, shuffle/1]).
+-import(meinWerkzeug, [read_config/2, lookup/2]).
 -include("messages.hrl").
 -include("constants.hrl").
 
@@ -111,7 +111,6 @@ ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Togg
       log(Name, "state(ready) sending kill to ggt procs in ~s:(~s)~n", [list2String(GgtProcs), timeMilliSecond()]),
       send_kill(GgtProcs),
       log(Name, "state(ready) resetting wggt/corr_flag/min_reported_mi/ggt_proc_list to defaults:(~s)~n", [timeMilliSecond()]),
-
       log(Name, "state(ready) reset completed::transition to 'register' state:(~s)~n", [timeMilliSecond()]),
       {NewRt, NewGgtCount, NewTtw, NewTtt} = read_config([rt, ggtcount, ttw, ttt], "koordinator.cfg"),
       send_after(NewRt * 1000, self(), ?STEP),
@@ -120,10 +119,10 @@ ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Togg
       log(Name, "state(ready) received 'kill' sending kill to all ggt processes:(~s)~n", [timeMilliSecond()]),
       log(Name, "state(ready) sending kill to ggt procs in ~s:(~s)~n", [list2String(GgtProcs), timeMilliSecond()]),
       send_kill(GgtProcs),
-      log(Name, "state(ready) globally unbinding coord ~p with ?:(~s)~n", [self(), timeMilliSecond()]),
-
+      log(Name, "state(ready) globally unbinding coord ~p with ~p:(~s)~n", [self(), Nameservice, timeMilliSecond()]),
+      Nameservice ! {self(), {?UNBIND, Name}},
       log(Name, "state(ready) unregistering ~p:(~s)~n", [self(), timeMilliSecond()]),
-
+      unregister(Name),
       log(Name, "state(ready) ~p going down:(~s)~n", [self(), timeMilliSecond()])
   end.
 

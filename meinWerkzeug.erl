@@ -5,7 +5,7 @@
 -import(file, [consult/1]).
 -include("messages.hrl").
 
--export([read_config/2, shuffle/1, lookup/2]).
+-export([read_config/2, lookup/2]).
 
 read_config(Keys, FileName) ->
   {ok, File} = consult(FileName),
@@ -22,9 +22,3 @@ lookup(Nameservice, Name) ->
     {?REBIND_RES, ServiceAtNode} ->
       ServiceAtNode
   end.
-
-% http://my.oschina.net/rongtou/blog/81254
-shuffle(List) ->
-  List1 = [{random:uniform(), X} || X <- List],
-  List2 = lists:keysort(1, List1),
-  [E || {_, E} <- List2].
