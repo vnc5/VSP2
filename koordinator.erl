@@ -43,7 +43,7 @@ receive_register_requests(Name, Nameservice, GgtCount, Ttw, Ttt, GgtProcs) ->
       log(Name, "state(init) received 'step' preparing transition to 'ready' state :(~s)~n", [timeMilliSecond()]),
       create_ggt_ring(Name, GgtProcs),
       % ??? "Starten einer Berechnung über die Nachricht {calc target}"
-      send_after(10000, self(), {?CALCSTART, 5}),
+      send_after(10000, self(), {?CALC, 5}),
       ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, false, 0)
   end.
 
@@ -68,7 +68,7 @@ create_ggt_ring(Name, GgtProcs, Index) ->
 
 ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Toggle, LowestNumber) ->
   receive
-    {?CALCSTART, Target} ->
+    {?CALC, Target} ->
       log(Name, "state(ready) starting new calculation with target ~b:(~s)~n", [Target, timeMilliSecond()]),
       Mis = bestimme_mis(target, length(GgtProcs)),
       log(Name, "state(ready) calculated mis:\"~s\":(~s)~n", [list2String(Mis), timeMilliSecond()]),
