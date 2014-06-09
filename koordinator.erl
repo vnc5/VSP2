@@ -89,7 +89,7 @@ ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Togg
         GgtMi > NewLowestNumber ->
           log(Name, "state(ready) ggt '~s' sent wrong termination with ggt=~b (cTime=\"~s\"):(~s)~n", [GgtName, GgtMi, GgtTime, timeMilliSecond()]),
           if
-            Toggle == true ->
+            Toggle =:= true ->
               log(Name, "state(ready) correction flag is set::sending minimal reported ggt=~b to ~p:(~s)~n", [NewLowestNumber, From, timeMilliSecond()]),
               From ! {?SEND, NewLowestNumber};
             true ->
@@ -155,4 +155,8 @@ send_whats_on(Name, GgtProcs) ->
   {ProcName, _} = Proc,
   log(Name, "state(ready) sending whats_on to ~p:(~s)~n", [ProcName, timeMilliSecond()]),
   Proc ! ?WHATSON,
+  receive
+    {?WHATSON_RES, State} ->
+      log(Name, "state(ready) ~p says ~s:(~s)", [ProcName, State, timeMilliSecond()])
+  end,
   send_whats_on(Name, GgtProcsTail).

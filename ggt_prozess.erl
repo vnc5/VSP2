@@ -42,7 +42,7 @@ wait_for_first_mi(Name, Nameservice, Left, Right, Koordinator, Ttw, Ttt) ->
     {?SETPMI, Mi} ->
       log(Name, "ggt:~p (pre_process)::receiving set_pmi ~b:(~s)~n", [Name, Mi, timeMilliSecond()]),
       Timer = reset_timer(Name, none, Ttt, terminate),
-      process(Name, Nameservice, Mi, Left, Right, Koordinator, Timer, 2, Ttw, Ttt)
+      process(Name, Nameservice, Mi, Left, Right, Koordinator, Timer, timestamp_micro(), Ttw, Ttt)
   end.
 
 process(Name, Nameservice, Mi, Left, Right, Coord, Timer, LastMi, Ttw, Ttt) ->
@@ -71,8 +71,9 @@ process(Name, Nameservice, Mi, Left, Right, Coord, Timer, LastMi, Ttw, Ttt) ->
       unregister(Name),
       log(Name, "ggt:~p (voting)::unregistering ~p:(~s)~n", [Name, Name, timeMilliSecond()]),
       Nameservice ! {self(), {?UNBIND, Name}};
-    ?WHATSON ->
-      whatson(Name, Coord, ok),
+    {?WHATSON, From} ->
+      log(Name, "ggt:~p (voted)::receiving whats_on from \"~p\"::responding ~s:(~s)~n", [Name, From, voted, timeMilliSecond()]),
+      Coord ! {?WHATSON_RES, voted},
       process(Name, Nameservice, Mi, Left, Right, Coord, Timer, LastMi, Ttw, Ttt);
     {?TELLMI, From} ->
       From ! {?TELLMI_RES, Mi},
@@ -92,10 +93,14 @@ process(Name, Nameservice, Mi, Left, Right, Coord, Timer, LastMi, Ttw, Ttt) ->
               log(Name, "ggt:~p (processing)::reject vote from ~p::time since last mi event ~f(micro) :(~s)~n", [Name, Initiator, Diff, timeMilliSecond()])
           end;
         true ->
-          Coord ! {?BRIEFTERM, {Name, Mi, timeMilliSecond()}, self()}
+          log(Name, "ggt:~p (voting)::terminating vote::number of successful votes::~b:(~s)~n", [Name, 1, timeMilliSecond()]),
+          log(Name, "ggt:~p (voting)::terminated vote::sending termination with ggt=~b to ~p:(~s)~n", [Name, Mi, Coord, timeMilliSecond()]),
+          Coord ! {?BRIEFTERM, {Name, Mi, timeMilliSecond()}, self()},
+          log(Name, "ggt:~p (voting)::transition to state voted:(~s)~n", [timeMilliSecond()])
       end,
       process(Name, Nameservice, Mi, Left, Right, Coord, Timer, LastMi, Ttw, Ttt);
     terminate ->
+      % todo
       log(Name, "ggt:~p (processing)::starting vote:: mi is ~b:(~s)~n", [Name, Mi, timeMilliSecond()]),
       Left ! {?VOTE, Name},
       process(Name, Nameservice, Mi, Left, Right, Coord, Timer, LastMi, Ttw, Ttt)
@@ -131,7 +136,3 @@ reset_timer(Name, Timer, Ttt, Message) ->
   log(Name, "ggt:~p (processing)::mi event:: storing event time=~s:(~s)~n", [Name, timeMilliSecond(), timeMilliSecond()]),
   log(Name, "ggt:~p (processing)::mi event:: (re)setting timer:(~s)~n", [Name, timeMilliSecond(), timeMilliSecond()]),
   reset_timer(Timer, Ttt, Message).
-
-whatson(Name, Koordinator, Status) ->
-  log(Name, "ggt:~p::ggT WhatsOnAbfrage erhalten:(~s)~n", [Name, timeMilliSecond()]),
-  Koordinator ! {?WHATSON_RES, Status}.
