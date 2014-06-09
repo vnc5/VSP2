@@ -99,6 +99,9 @@ ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Togg
           log(Name, "state(ready) ggt '~s' sent termination with ggt=~b (cTime=\"~s\"):(~s)~n", [GgtName, GgtMi, GgtTime, timeMilliSecond()])
       end,
       ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Toggle, NewLowestNumber);
+    ?PROMPT ->
+      send_tell_mi(Name, GgtProcs),
+      ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Toggle, LowestNumber);
     ?TOGGLE ->
       NewToggle = Toggle =/= true,
       log(Name, "state(ready) received toggle::switching correction flag to ~s:(~s)~n", [NewToggle, timeMilliSecond()]),
@@ -125,6 +128,17 @@ ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Togg
       unregister(Name),
       log(Name, "state(ready) ~p going down:(~s)~n", [self(), timeMilliSecond()])
   end.
+
+send_tell_mi(_, []) -> ok;
+send_tell_mi(Name, GgtProcs) ->
+  [Proc | GgtProcsTail] = GgtProcs,
+  {ProcName, _} = Proc,
+  Proc ! {?TELLMI, self()},
+  receive
+    {?TELLMI_RES, Mi} ->
+      log(Name, "state(ready) ggt ~p reports mi=~b:(~s)~n", [ProcName, Mi, timeMilliSecond()])
+  end,
+  send_tell_mi(Name, GgtProcsTail).
 
 set_start_values(_, [], []) -> ok;
 set_start_values(Name, GgtProcs, Mis) ->
@@ -157,6 +171,6 @@ send_whats_on(Name, GgtProcs) ->
   Proc ! ?WHATSON,
   receive
     {?WHATSON_RES, State} ->
-      log(Name, "state(ready) ~p says ~s:(~s)", [ProcName, State, timeMilliSecond()])
+      log(Name, "state(ready) ~p says ~s:(~s)~n", [ProcName, State, timeMilliSecond()])
   end,
   send_whats_on(Name, GgtProcsTail).
