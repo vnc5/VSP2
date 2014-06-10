@@ -19,7 +19,7 @@ read_config_rec([Key|Keys], File) ->
 lookup(Nameservice, Name) ->
   Nameservice ! {self(), {?LOOKUP, Name}},
   receive
-    {?REBIND_RES, ServiceAtNode} ->
+    {?LOOKUP_RES, ServiceAtNode} ->
       ServiceAtNode
   end.
 

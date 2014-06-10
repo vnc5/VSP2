@@ -1,6 +1,7 @@
 -module(koordinator).
 -author("vince").
 
+-import(timer, [send_after/2]).
 -import(tools, [log/3]).
 -import(werkzeug, [timeMilliSecond/0, bestimme_mis/2, list2String/1, shuffle/1]).
 -import(meinWerkzeug, [read_config/2, lookup/2]).
@@ -19,8 +20,8 @@ register_koordinator(Name, Nameservice, Rt, GgtCount, Ttw, Ttt) ->
   Nameservice ! {self(), {?REBIND, Name, node()}},
   receive
     {?REBIND_RES, ok} ->
-      log(Name, "state('pre init') seccessfully bound ~p with NS nameservice (remote refNS= ~p):(~s)~n", [{Name, node()}, Nameservice, timeMilliSecond()]),
-      send_after(Rt * 1000, self(), ?STEP),
+      log(Name, "state('pre init') successfully bound ~p with NS nameservice (remote refNS= ~p):(~s)~n", [{Name, node()}, Nameservice, timeMilliSecond()]),
+      send_after(Rt * 1000, ?STEP),
       receive_register_requests(Name, Nameservice, GgtCount, Ttw, Ttt, [])
   end.
 
@@ -43,8 +44,10 @@ receive_register_requests(Name, Nameservice, GgtCount, Ttw, Ttt, GgtProcs) ->
       log(Name, "state(init) received 'step' preparing transition to 'ready' state :(~s)~n", [timeMilliSecond()]),
       create_ggt_ring(Name, GgtProcs),
       % ??? "Starten einer Berechnung über die Nachricht {calc target}"
-      send_after(10000, self(), {?CALC, 5}),
-      ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, false, 0)
+      send_after(10000, {?CALC, 5}),
+      ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, false, 0);
+    Other ->
+      log(Name, "Unknown: ~p~n", [Other])
   end.
 
 create_ggt_ring(Name, GgtProcs) ->
@@ -70,7 +73,7 @@ ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Togg
   receive
     {?CALC, Target} ->
       log(Name, "state(ready) starting new calculation with target ~b:(~s)~n", [Target, timeMilliSecond()]),
-      Mis = bestimme_mis(target, length(GgtProcs)),
+      Mis = bestimme_mis(Target, length(GgtProcs)),
       log(Name, "state(ready) calculated mis:\"~s\":(~s)~n", [list2String(Mis), timeMilliSecond()]),
       set_start_values(Name, GgtProcs, Mis),
       trigger_calculation(Name, shuffle(GgtProcs), Target, max(round(length(GgtProcs) * 0.15), 2)),
@@ -116,7 +119,7 @@ ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Togg
       log(Name, "state(ready) resetting wggt/corr_flag/min_reported_mi/ggt_proc_list to defaults:(~s)~n", [timeMilliSecond()]),
       log(Name, "state(ready) reset completed::transition to 'register' state:(~s)~n", [timeMilliSecond()]),
       {NewRt, NewGgtCount, NewTtw, NewTtt} = read_config([rt, ggtcount, ttw, ttt], "koordinator.cfg"),
-      send_after(NewRt * 1000, self(), ?STEP),
+      send_after(NewRt * 1000, ?STEP),
       receive_register_requests(Name, Nameservice, NewGgtCount, NewTtw, NewTtt, []);
     ?KILL ->
       log(Name, "state(ready) received 'kill' sending kill to all ggt processes:(~s)~n", [timeMilliSecond()]),
@@ -149,6 +152,7 @@ set_start_values(Name, GgtProcs, Mis) ->
   set_start_values(Name, GgtProcsTail, MisTail).
 
 trigger_calculation(_, _, _, 0) -> ok;
+trigger_calculation(_, [], _, _) -> ok;
 trigger_calculation(Name, GgtProcs, Target, ProcCount) ->
   [Proc | GgtProcsTail] = GgtProcs,
   % "eine Zahl (Vielfaches von target)" aha

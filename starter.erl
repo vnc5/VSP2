@@ -15,7 +15,7 @@ start(NameserviceNode, StarterNumber) ->
   Nameservice = global:whereis_name(NameserviceNodeName),
   Coord = lookup(Nameservice, Koordinator),
   LogName = io_lib:format("starter~b_ggt", [StarterNumber]),
-  log(LogName, "looked up NS and coord~n", []),
+  log(LogName, "looked up NS and ~s~n", [Koordinator]),
   Coord ! {?GGTVALS, self()},
   receive
     {?GGTVALS_RES, Ttw, Ttt, Ggts} ->
