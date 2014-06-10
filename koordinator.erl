@@ -17,6 +17,7 @@ start(NameserviceNode) ->
   register_koordinator(Name, Nameservice, Rt, GgtCount, Ttw, Ttt).
 
 register_koordinator(Name, Nameservice, Rt, GgtCount, Ttw, Ttt) ->
+  register(Name, self()),
   Nameservice ! {self(), {?REBIND, Name, node()}},
   receive
     {?REBIND_RES, ok} ->
@@ -57,14 +58,14 @@ create_ggt_ring(Name, GgtProcs) ->
 create_ggt_ring(_, _, 0) -> ok;
 create_ggt_ring(Name, GgtProcs, Index) ->
   if
-    Index - 1 ->
+    Index == 1 ->
       PreviousIndex = length(GgtProcs);
     true ->
-      PreviousIndex = Index
+      PreviousIndex = Index - 1
   end,
   {Left, _} = lists:nth(PreviousIndex, GgtProcs),
   Current = lists:nth(Index, GgtProcs),
-  {Right, _} = lists:nth((Index + 1) rem length(GgtProcs), GgtProcs),
+  {Right, _} = lists:nth((Index rem length(GgtProcs)) + 1, GgtProcs),
   log(Name, "state(init) sending neighbours (l,r)=(~p,~p) to ~p:(~s)~n", [Left, Right, Current, timeMilliSecond()]),
   Current ! {?NEIGHBOURS, Left, Right},
   create_ggt_ring(Name, GgtProcs, Index - 1).
@@ -158,7 +159,7 @@ trigger_calculation(Name, GgtProcs, Target, ProcCount) ->
   % "eine Zahl (Vielfaches von target)" aha
   MultipleTarget = Target * random:uniform(100),
   log(Name, "state(ready) sending initial y=~b for ~p:(~s)~n", [MultipleTarget, Proc, timeMilliSecond()]),
-  Proc ! {?SEND, Target},
+  Proc ! {?SEND, MultipleTarget},
   trigger_calculation(Name, GgtProcsTail, Target, ProcCount - 1).
 
 send_kill([]) -> ok;

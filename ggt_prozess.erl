@@ -26,7 +26,7 @@ register_ggt_process(Name, Nameservice, Coord, Ttw, Ttt) ->
   end.
 
 wait_for_neighbours(Name, Nameservice, Koordinator, Ttw, Ttt) ->
-  log(Name, "ggt:~p (initial)::waiting for neighbours to be set:(~s)", [Name, timeMilliSecond()]),
+  log(Name, "ggt:~p (initial)::waiting for neighbours to be set:(~s)~n", [Name, timeMilliSecond()]),
   receive
     {?NEIGHBOURS, Left, Right} ->
       LeftNode = lookup(Nameservice, Left),
@@ -60,7 +60,7 @@ process(State, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVot
           NewTimer = reset_timer(Name, none, Ttt, terminate);
         true ->
           log(Name, "ggt:~p (processing)::calculated new mi::mi=~b::sending ~b to ~p:(~s)~n", [Name, NewMi, NewMi, Coord, timeMilliSecond()]),
-          Coord ! {?BRIEFME, Name, NewMi, timeMilliSecond()},
+          Coord ! {?BRIEFME, {Name, NewMi, timeMilliSecond()}},
           NewTimer = reset_timer(Name, none, Ttt, terminate),
           send_mi_to_neighbours(Name, NewMi, Left, Right)
       end,
@@ -90,10 +90,10 @@ process(State, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVot
           if
             Diff > (Ttt / 2) * 1000000 ->
               {LeftName, _} = Left,
-              log(Name, "ggt:~p (~s)::accept vote from ~p::routing to ~p::time since last mi event ~f(s):(~s)~n", [Name, State, Initiator, LeftName, Diff, timeMilliSecond()]),
+              log(Name, "ggt:~p (~s)::accept vote from ~p::routing to ~p::time since last mi event ~f(s):(~s)~n", [Name, State, Initiator, LeftName, Diff / 1000000, timeMilliSecond()]),
               Left ! {?VOTE, Initiator};
             true ->
-              log(Name, "ggt:~p (~s)::reject vote from ~p::time since last mi event ~f(micro) :(~s)~n", [Name, State, Initiator, Diff, timeMilliSecond()])
+              log(Name, "ggt:~p (~s)::reject vote from ~p::time since last mi event ~f(ms) :(~s)~n", [Name, State, Initiator, Diff / 1000, timeMilliSecond()])
           end;
         true ->
           NewSuccessfulVotes = SuccessfulVotes + 1,
@@ -101,7 +101,7 @@ process(State, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVot
           log(Name, "ggt:~p (~s)::terminated vote::sending termination with ggt=~b to ~p:(~s)~n", [Name, State, Mi, Coord, timeMilliSecond()]),
           Coord ! {?BRIEFTERM, {Name, Mi, timeMilliSecond()}, self()},
           NewState = voted,
-          log(Name, "ggt:~p (~s)::transition to state ~s:(~s)~n", [State, NewState, timeMilliSecond()])
+          log(Name, "ggt:~p (~s)::transition to state ~s:(~s)~n", [Name, State, NewState, timeMilliSecond()])
       end,
       process(NewState, Name, Nameservice, Mi, Left, Right, Coord, CanVote, NewSuccessfulVotes, Timer, LastMi, Ttw, Ttt);
     terminate ->
@@ -126,7 +126,7 @@ send_mi_to_neighbours(Name, Mi, Left, Right) ->
 calc_ggt(Name, Mi, Y, Ttw) ->
   if
     Y < Mi ->
-      log(Name, "ggt:~p (processing)::calculation start:: calculating new ggt:: mi=~b, y=~b::duration ~b(s):(~s)~n", [Name, Mi, Y, Ttw]),
+      log(Name, "ggt:~p (processing)::calculation start:: calculating new ggt:: mi=~b, y=~b::duration ~b(s):(~s)~n", [Name, Mi, Y, Ttw, timeMilliSecond()]),
       sleep(Ttw * 1000),
       NewMi = ((Mi - 1) rem Y) + 1,
       log(Name, "ggt:~p (processing)::calculation done:: changes mi=~b to ~b:(~s)~n", [Name, Mi, NewMi, timeMilliSecond()]);
@@ -139,10 +139,10 @@ calc_ggt(Name, Mi, Y, Ttw) ->
 reset_timer(Name, Timer, Ttt, Message) ->
   if
     Timer =:= none ->
-      NewTimer = send_after(Ttt * 1000, Message);
+      {ok, NewTimer} = send_after(Ttt * 1000, Message);
     true ->
       NewTimer = Timer
   end,
   log(Name, "ggt:~p (processing)::mi event:: storing event time=~s:(~s)~n", [Name, timeMilliSecond(), timeMilliSecond()]),
-  log(Name, "ggt:~p (processing)::mi event:: (re)setting timer:(~s)~n", [Name, timeMilliSecond(), timeMilliSecond()]),
-  reset_timer(Timer, Ttt, Message).
+  log(Name, "ggt:~p (processing)::mi event:: (re)setting timer:(~s)~n", [Name, timeMilliSecond()]),
+  reset_timer(NewTimer, Ttt, Message).

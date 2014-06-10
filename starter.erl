@@ -25,6 +25,7 @@ start(NameserviceNode, StarterNumber) ->
 
 start_ggt_procs(_, _, _, _, _, _, _, _, 0) -> ok;
 start_ggt_procs(LogName, Nameservice, Coord, Praktikumsgruppe, Team, StarterNumber, Ttw, Ttt, Count) ->
-  Name = list_to_atom(io_lib:format("~b~b~b_~b", [Praktikumsgruppe, Team, Count, StarterNumber])),
+  Name = list_to_atom(lists:flatten(io_lib:format("~b~b~b_~b", [Praktikumsgruppe, Team, Count, StarterNumber]))),
   log(LogName, "Starting ggt proc '~s' with ttw ~b(s) ttt ~b(s):(~s)~n", [Name, Ttw, Ttt, timeMilliSecond()]),
-  spawn(ggt_prozess, start, [Name, Nameservice, Coord, Ttw, Ttt]).
+  spawn_link(ggt_prozess, start, [Name, Nameservice, Coord, Ttw, Ttt]),
+  start_ggt_procs(LogName, Nameservice, Coord, Praktikumsgruppe, Team, StarterNumber, Ttw, Ttt, Count - 1).
