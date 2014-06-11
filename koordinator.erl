@@ -81,8 +81,14 @@ ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Togg
       trigger_calculation(Name, shuffle(GgtProcs), Target, max(round(length(GgtProcs) * 0.15), 2)),
       ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Toggle, 0);
     {?BRIEFME, {GgtName, GgtMi, GgtTime}} ->
+      if
+        LowestNumber == 0 ->
+          NewLowestNumber = GgtMi;
+        true ->
+          NewLowestNumber = min(GgtMi, LowestNumber)
+      end,
       log(Name, "state(ready) ggt '~s' sent new mi=~b (cTime=\"~s\"):(~s)~n", [GgtName, GgtMi, GgtTime, timeMilliSecond()]),
-      ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Toggle, LowestNumber);
+      ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Toggle, NewLowestNumber);
     {?BRIEFTERM, {GgtName, GgtMi, GgtTime}, From} ->
       if
         LowestNumber == 0 ->
