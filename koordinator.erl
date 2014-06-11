@@ -17,7 +17,7 @@ start(NameserviceNode) ->
   register_koordinator(Name, Nameservice, Rt, GgtCount, Ttw, Ttt).
 
 register_koordinator(Name, Nameservice, Rt, GgtCount, Ttw, Ttt) ->
-  register(Name, self()),
+  global:register_name(Name, self()),
   Nameservice ! {self(), {?REBIND, Name, node()}},
   receive
     {?REBIND_RES, ok} ->
