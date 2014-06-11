@@ -12,17 +12,20 @@
 
 start(Name, Nameservice, Coord, Ttw, Ttt) ->
   Parent = self(),
-  Calculator = spawn_link(fun() -> calculator(Parent, Name, Ttw) end),
+  Calculator = spawn_link(fun() -> calculator(Parent, 0, Name, Ttw) end),
   register_ggt_process(Calculator, Name, Nameservice, Coord, Ttw, Ttt).
 
-calculator(Parent, Name, Ttw) ->
+calculator(Parent, Mi, Name, Ttw) ->
   receive
-    {calc, Mi, Y} ->
-      calc_ggt(Parent, Name, Mi, Y, Ttw),
-      calculator(Parent, Name, Ttw)
+    {mi, NewMi} ->
+      calculator(Parent, NewMi, Name, Ttw);
+    {calc, Y} ->
+      NewMi = calc_ggt(Name, Mi, Y, Ttw),
+      Parent ! {calc_done, Mi, NewMi},
+      calculator(Parent, NewMi, Name, Ttw)
   end.
 
-calc_ggt(Parent, Name, Mi, Y, Ttw) ->
+calc_ggt(Name, Mi, Y, Ttw) ->
   if
     Y < Mi ->
       log(Name, "ggt:~p (processing)::calculation start:: calculating new ggt:: mi=~b, y=~b::duration ~b(s):(~s)~n", [Name, Mi, Y, Ttw, timeMilliSecond()]),
@@ -33,7 +36,7 @@ calc_ggt(Parent, Name, Mi, Y, Ttw) ->
       NewMi = Mi,
       log(Name, "ggt:~p (processing)::no ggt calculation reason:: ~b>=~b:(~s)~n", [Name, Y, Mi, timeMilliSecond()])
   end,
-  Parent ! {calc_done, NewMi}.
+  NewMi.
 
 register_ggt_process(Calculator, Name, Nameservice, Coord, Ttw, Ttt) ->
   log(Name, "ggt:locally registering ~p; name is '~p':(~s)~n", [self(), Name, timeMilliSecond()]),
@@ -62,22 +65,24 @@ wait_for_first_mi(Calculator, Name, Nameservice, Left, Right, Koordinator, Ttw, 
   log(Name, "ggt:~p (pre_process)::waiting for mi to be set:(~s)~n", [Name, timeMilliSecond()]),
   receive
     {?SETPMI, Mi} ->
+      Calculator ! {mi, Mi},
       log(Name, "ggt:~p (pre_process)::receiving set_pmi ~b:(~s)~n", [Name, Mi, timeMilliSecond()]),
       Timer = reset_timer(Name, none, Ttt, terminate),
-      process(processing, Calculator, Name, Nameservice, Mi, Left, Right, Koordinator, false, 0, Timer, timestamp_micro(), Ttw, Ttt)
+      process(processing, Calculator, Name, Nameservice, Left, Right, Koordinator, false, 0, Timer, timestamp_micro(), Ttw, Ttt)
   end.
 
-process(State, Calculator, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt) ->
+process(State, Calculator, Name, Nameservice, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt) ->
   receive
     {?SETPMI, MiNeu} ->
+      Calculator ! {mi, MiNeu},
       NewTimer = reset_timer(Name, Timer, Ttt, terminate),
       log(Name, "ggt:~p (~s)::receiving set_pmi ~b:(~s)~n", [Name, State, MiNeu, timeMilliSecond()]),
-      process(processing, Calculator, Name, Nameservice, MiNeu, Left, Right, Coord, true, SuccessfulVotes, NewTimer, timestamp_micro(), Ttw, Ttt);
+      process(processing, Calculator, Name, Nameservice, Left, Right, Coord, true, SuccessfulVotes, NewTimer, timestamp_micro(), Ttw, Ttt);
     {?SEND, Y} ->
       log(Name, "ggt:~p (~s)::receiving send y=~b:(~s)~n", [Name, State, Y, timeMilliSecond()]),
       cancel(Timer),
-      Calculator ! {calc, Mi, Y},
-      process(State, Calculator, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVotes, none, LastMi, Ttw, Ttt);
+      Calculator ! {calc, Y},
+      process(State, Calculator, Name, Nameservice, Left, Right, Coord, CanVote, SuccessfulVotes, none, LastMi, Ttw, Ttt);
     ?KILL ->
       log(Name, "ggt:~p (~s)::received kill::starting cleanup:(~s)~n", [Name, State, timeMilliSecond()]),
       log(Name, "ggt:~p (~s)::globally unbinding ~p with ~p:(~s)~n", [Name, State, Name, self(), timeMilliSecond()]),
@@ -87,11 +92,12 @@ process(State, Calculator, Name, Nameservice, Mi, Left, Right, Coord, CanVote, S
     {?WHATSON, From} ->
       log(Name, "ggt:~p (~s)::receiving whats_on from \"~p\"::responding ~s:(~s)~n", [Name, State, From, State, timeMilliSecond()]),
       Coord ! {?WHATSON_RES, State},
-      process(State, Calculator, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt);
+      process(State, Calculator, Name, Nameservice, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt);
     {?TELLMI, From} ->
+      Mi = get_mi(Calculator),
       log(Name, "ggt:~p (~s)::receiving tell_mi from ~p::mi is ~b:(~s)~n", [Name, State, From, Mi, timeMilliSecond()]),
       From ! {?TELLMI_RES, Mi},
-      process(State, Calculator, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt);
+      process(State, Calculator, Name, Nameservice, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt);
     {?VOTE, Initiator} ->
       % "Erhält ein initiierender Prozess von seinem rechten Nachbarn die Anfrage nach der Terminierung (vote), meldet er die Terminierung dem Koordinator."
       % Kann mit dieser Schnittstelle nicht sichergestellt werden, ob die Nachricht vom rechten Nachbarn kam.
@@ -109,6 +115,8 @@ process(State, Calculator, Name, Nameservice, Mi, Left, Right, Coord, CanVote, S
               log(Name, "ggt:~p (~s)::reject vote from ~p::time since last mi event ~f(ms) :(~s)~n", [Name, State, Initiator, Diff / 1000, timeMilliSecond()])
           end;
         true ->
+          Mi = get_mi(Calculator),
+
           NewSuccessfulVotes = SuccessfulVotes + 1,
           log(Name, "ggt:~p (~s)::terminating vote::number of successful votes::~b:(~s)~n", [Name, State, NewSuccessfulVotes, timeMilliSecond()]),
           log(Name, "ggt:~p (~s)::terminated vote::sending termination with ggt=~b to ~p:(~s)~n", [Name, State, Mi, Coord, timeMilliSecond()]),
@@ -116,18 +124,19 @@ process(State, Calculator, Name, Nameservice, Mi, Left, Right, Coord, CanVote, S
           NewState = voted,
           log(Name, "ggt:~p (~s)::transition to state ~s:(~s)~n", [Name, State, NewState, timeMilliSecond()])
       end,
-      process(NewState, Calculator, Name, Nameservice, Mi, Left, Right, Coord, CanVote, NewSuccessfulVotes, Timer, LastMi, Ttw, Ttt);
+      process(NewState, Calculator, Name, Nameservice, Left, Right, Coord, CanVote, NewSuccessfulVotes, Timer, LastMi, Ttw, Ttt);
     terminate ->
       if
         CanVote =:= true ->
+          Mi = get_mi(Calculator),
           NewCanVote = false,
           log(Name, "ggt:~p (~s)::starting vote:: mi is ~b:(~s)~n", [State, Name, Mi, timeMilliSecond()]),
           Left ! {?VOTE, Name};
         true ->
           NewCanVote = CanVote
       end,
-      process(voting, Calculator, Name, Nameservice, Mi, Left, Right, Coord, NewCanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt);
-    {calc_done, NewMi} ->
+      process(voting, Calculator, Name, Nameservice, Left, Right, Coord, NewCanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt);
+    {calc_done, Mi, NewMi} ->
       if
         Mi == NewMi ->
           NewTimer = reset_timer(Name, none, Ttt, terminate);
@@ -137,10 +146,17 @@ process(State, Calculator, Name, Nameservice, Mi, Left, Right, Coord, CanVote, S
           NewTimer = reset_timer(Name, none, Ttt, terminate),
           send_mi_to_neighbours(Name, NewMi, Left, Right)
       end,
-      process(processing, Calculator, Name, Nameservice, NewMi, Left, Right, Coord, true, SuccessfulVotes, NewTimer, timestamp_micro(), Ttw, Ttt);
+      process(processing, Calculator, Name, Nameservice, Left, Right, Coord, true, SuccessfulVotes, NewTimer, timestamp_micro(), Ttw, Ttt);
     Other ->
       log(Name, "Unknown: ~p~n", [Other]),
-      process(State, Calculator, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt)
+      process(State, Calculator, Name, Nameservice, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt)
+  end.
+
+get_mi(Calculator) ->
+  Calculator ! get_mi,
+  receive
+    {mi, Mi} ->
+      Mi
   end.
 
 send_mi_to_neighbours(Name, Mi, Left, Right) ->
