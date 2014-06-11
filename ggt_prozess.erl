@@ -118,7 +118,8 @@ process(State, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVot
       end,
       process(processing, Name, Nameservice, NewMi, Left, Right, Coord, true, SuccessfulVotes, NewTimer, timestamp_micro(), Ttw, Ttt);
     Other ->
-      log(Name, "Unknown: ~p~n", [Other])
+      log(Name, "Unknown: ~p~n", [Other]),
+      process(State, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt)
   end.
 
 send_mi_to_neighbours(Name, Mi, Left, Right) ->

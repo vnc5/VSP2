@@ -131,7 +131,10 @@ ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Togg
       Nameservice ! {self(), {?UNBIND, Name}},
       log(Name, "state(ready) unregistering ~p:(~s)~n", [self(), timeMilliSecond()]),
       unregister(Name),
-      log(Name, "state(ready) ~p going down:(~s)~n", [self(), timeMilliSecond()])
+      log(Name, "state(ready) ~p going down:(~s)~n", [self(), timeMilliSecond()]);
+    Other ->
+      log(Name, "Unknown: ~p~n", [Other]),
+      ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, Toggle, LowestNumber)
   end.
 
 send_tell_mi(_, []) -> ok;
@@ -158,7 +161,7 @@ trigger_calculation(_, [], _, _) -> ok;
 trigger_calculation(Name, GgtProcs, Target, ProcCount) ->
   [Proc | GgtProcsTail] = GgtProcs,
   % "eine Zahl (Vielfaches von target)" aha
-  MultipleTarget = Target * random:uniform(100),
+  [MultipleTarget|[]] = bestimme_mis(Target, 1),
   log(Name, "state(ready) sending initial y=~b for ~p:(~s)~n", [MultipleTarget, Proc, timeMilliSecond()]),
   Proc ! {?SEND, MultipleTarget},
   trigger_calculation(Name, GgtProcsTail, Target, ProcCount - 1).
