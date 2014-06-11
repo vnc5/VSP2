@@ -17,6 +17,8 @@ start(Name, Nameservice, Coord, Ttw, Ttt) ->
 
 calculator(Parent, Mi, Name, Ttw) ->
   receive
+    get_mi ->
+      Parent ! {mi, Mi};
     {mi, NewMi} ->
       calculator(Parent, NewMi, Name, Ttw);
     {calc, Y} ->
