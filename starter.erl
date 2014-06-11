@@ -14,7 +14,7 @@ start(NameserviceNode, StarterNumber) ->
   net_adm:ping(NameserviceNode),
   Nameservice = global:whereis_name(NameserviceNodeName),
   Coord = lookup(Nameservice, Koordinator),
-  LogName = io_lib:format("starter~b_ggt", [StarterNumber]),
+  LogName = lists:flatten(io_lib:format("starter~b_ggt", [StarterNumber])),
   log(LogName, "looked up NS and ~s~n", [Koordinator]),
   Coord ! {?GGTVALS, self()},
   receive

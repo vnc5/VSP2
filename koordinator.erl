@@ -17,6 +17,7 @@ start(NameserviceNode) ->
   register_koordinator(Name, Nameservice, Rt, GgtCount, Ttw, Ttt).
 
 register_koordinator(Name, Nameservice, Rt, GgtCount, Ttw, Ttt) ->
+  register(Name, self()),
   global:register_name(Name, self()),
   Nameservice ! {self(), {?REBIND, Name, node()}},
   receive
@@ -45,7 +46,7 @@ receive_register_requests(Name, Nameservice, GgtCount, Ttw, Ttt, GgtProcs) ->
       log(Name, "state(init) received 'step' preparing transition to 'ready' state :(~s)~n", [timeMilliSecond()]),
       create_ggt_ring(Name, GgtProcs),
       % ??? "Starten einer Berechnung über die Nachricht {calc target}"
-      send_after(10000, {?CALC, 5}),
+      send_after(5000, {?CALC, 5}),
       ready_state_loop(Name, Nameservice, GgtProcs, GgtCount, Ttw, Ttt, GgtProcs, false, 0);
     Other ->
       log(Name, "Unknown: ~p~n", [Other])
@@ -173,7 +174,7 @@ send_whats_on(Name, GgtProcs) ->
   [Proc | GgtProcsTail] = GgtProcs,
   {ProcName, _} = Proc,
   log(Name, "state(ready) sending whats_on to ~p:(~s)~n", [ProcName, timeMilliSecond()]),
-  Proc ! ?WHATSON,
+  Proc ! {?WHATSON, self()},
   receive
     {?WHATSON_RES, State} ->
       log(Name, "state(ready) ~p says ~s:(~s)~n", [ProcName, State, timeMilliSecond()])
