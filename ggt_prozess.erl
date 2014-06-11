@@ -65,7 +65,7 @@ process(State, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVot
       Nameservice ! {self(), {?UNBIND, Name}};
     {?WHATSON, From} ->
       log(Name, "ggt:~p (~s)::receiving whats_on from \"~p\"::responding ~s:(~s)~n", [Name, State, From, State, timeMilliSecond()]),
-      Coord ! {?WHATSON_RES, Name},
+      Coord ! {?WHATSON_RES, State},
       process(State, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt);
     {?TELLMI, From} ->
       log(Name, "ggt:~p (~s)::receiving tell_mi from ~p::mi is ~b:(~s)~n", [Name, State, From, Mi, timeMilliSecond()]),
