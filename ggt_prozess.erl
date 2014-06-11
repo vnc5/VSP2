@@ -11,9 +11,31 @@
 -export([start/5]).
 
 start(Name, Nameservice, Coord, Ttw, Ttt) ->
-  register_ggt_process(Name, Nameservice, Coord, Ttw, Ttt).
+  Parent = self(),
+  Calculator = spawn_link(fun() -> calculator(Parent, Name, Ttw) end),
+  register_ggt_process(Calculator, Name, Nameservice, Coord, Ttw, Ttt).
 
-register_ggt_process(Name, Nameservice, Coord, Ttw, Ttt) ->
+calculator(Parent, Name, Ttw) ->
+  receive
+    {calc, Mi, Y} ->
+      calc_ggt(Parent, Name, Mi, Y, Ttw),
+      calculator(Parent, Name, Ttw)
+  end.
+
+calc_ggt(Parent, Name, Mi, Y, Ttw) ->
+  if
+    Y < Mi ->
+      log(Name, "ggt:~p (processing)::calculation start:: calculating new ggt:: mi=~b, y=~b::duration ~b(s):(~s)~n", [Name, Mi, Y, Ttw, timeMilliSecond()]),
+      sleep(Ttw * 1000),
+      NewMi = ((Mi - 1) rem Y) + 1,
+      log(Name, "ggt:~p (processing)::calculation done:: changes mi=~b to ~b:(~s)~n", [Name, Mi, NewMi, timeMilliSecond()]);
+    true ->
+      NewMi = Mi,
+      log(Name, "ggt:~p (processing)::no ggt calculation reason:: ~b>=~b:(~s)~n", [Name, Y, Mi, timeMilliSecond()])
+  end,
+  Parent ! {calc_done, NewMi}.
+
+register_ggt_process(Calculator, Name, Nameservice, Coord, Ttw, Ttt) ->
   log(Name, "ggt:locally registering ~p; name is '~p':(~s)~n", [self(), Name, timeMilliSecond()]),
   register(Name, self()),
   Nameservice ! {self(), {?REBIND, Name, node()}},
@@ -22,10 +44,10 @@ register_ggt_process(Name, Nameservice, Coord, Ttw, Ttt) ->
       log(Name, "ggt: ~p bound as service ~p:(~s)~n", [self(), {Name, node()}, timeMilliSecond()]),
       log(Name, "ggt:~p (initial)::~p checkin in to coordinator ~p as service ~p:(~s)~n", [Name, self(), Coord, Name, timeMilliSecond()]),
       Coord ! {?CHECKIN, Name},
-      wait_for_neighbours(Name, Nameservice, Coord, Ttw, Ttt)
+      wait_for_neighbours(Calculator, Name, Nameservice, Coord, Ttw, Ttt)
   end.
 
-wait_for_neighbours(Name, Nameservice, Koordinator, Ttw, Ttt) ->
+wait_for_neighbours(Calculator, Name, Nameservice, Koordinator, Ttw, Ttt) ->
   log(Name, "ggt:~p (initial)::waiting for neighbours to be set:(~s)~n", [Name, timeMilliSecond()]),
   receive
     {?NEIGHBOURS, Left, Right} ->
@@ -33,30 +55,29 @@ wait_for_neighbours(Name, Nameservice, Koordinator, Ttw, Ttt) ->
       RightNode = lookup(Nameservice, Right),
       log(Name, "ggt:~p (initial)::initializing neighbours::l=~p(~p), r=~p(~p):(~s)~n", [Name, Left, LeftNode, Right, RightNode, timeMilliSecond()]),
       log(Name, "ggt:~p (initial)::transition to pre process state: left neighbour=~p, right neigbour=~p:(~s)~n", [Name, Left, Right, timeMilliSecond()]),
-      wait_for_first_mi(Name, Nameservice, LeftNode, RightNode, Koordinator, Ttw, Ttt)
+      wait_for_first_mi(Calculator, Name, Nameservice, LeftNode, RightNode, Koordinator, Ttw, Ttt)
   end.
 
-wait_for_first_mi(Name, Nameservice, Left, Right, Koordinator, Ttw, Ttt) ->
+wait_for_first_mi(Calculator, Name, Nameservice, Left, Right, Koordinator, Ttw, Ttt) ->
   log(Name, "ggt:~p (pre_process)::waiting for mi to be set:(~s)~n", [Name, timeMilliSecond()]),
   receive
     {?SETPMI, Mi} ->
       log(Name, "ggt:~p (pre_process)::receiving set_pmi ~b:(~s)~n", [Name, Mi, timeMilliSecond()]),
       Timer = reset_timer(Name, none, Ttt, terminate),
-      process(processing, Name, Nameservice, Mi, Left, Right, Koordinator, false, 0, Timer, timestamp_micro(), Ttw, Ttt)
+      process(processing, Calculator, Name, Nameservice, Mi, Left, Right, Koordinator, false, 0, Timer, timestamp_micro(), Ttw, Ttt)
   end.
 
-process(State, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt) ->
+process(State, Calculator, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt) ->
   receive
     {?SETPMI, MiNeu} ->
       NewTimer = reset_timer(Name, Timer, Ttt, terminate),
       log(Name, "ggt:~p (~s)::receiving set_pmi ~b:(~s)~n", [Name, State, MiNeu, timeMilliSecond()]),
-      process(processing, Name, Nameservice, MiNeu, Left, Right, Coord, true, SuccessfulVotes, NewTimer, timestamp_micro(), Ttw, Ttt);
+      process(processing, Calculator, Name, Nameservice, MiNeu, Left, Right, Coord, true, SuccessfulVotes, NewTimer, timestamp_micro(), Ttw, Ttt);
     {?SEND, Y} ->
       log(Name, "ggt:~p (~s)::receiving send y=~b:(~s)~n", [Name, State, Y, timeMilliSecond()]),
       cancel(Timer),
-      Parent = self(),
-      spawn_link(fun() -> calc_ggt(Parent, Name, Mi, Y, Ttw) end),
-      process(State, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVotes, none, LastMi, Ttw, Ttt);
+      Calculator ! {calc, Mi, Y},
+      process(State, Calculator, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVotes, none, LastMi, Ttw, Ttt);
     ?KILL ->
       log(Name, "ggt:~p (~s)::received kill::starting cleanup:(~s)~n", [Name, State, timeMilliSecond()]),
       log(Name, "ggt:~p (~s)::globally unbinding ~p with ~p:(~s)~n", [Name, State, Name, self(), timeMilliSecond()]),
@@ -66,11 +87,11 @@ process(State, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVot
     {?WHATSON, From} ->
       log(Name, "ggt:~p (~s)::receiving whats_on from \"~p\"::responding ~s:(~s)~n", [Name, State, From, State, timeMilliSecond()]),
       Coord ! {?WHATSON_RES, State},
-      process(State, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt);
+      process(State, Calculator, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt);
     {?TELLMI, From} ->
       log(Name, "ggt:~p (~s)::receiving tell_mi from ~p::mi is ~b:(~s)~n", [Name, State, From, Mi, timeMilliSecond()]),
       From ! {?TELLMI_RES, Mi},
-      process(State, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt);
+      process(State, Calculator, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt);
     {?VOTE, Initiator} ->
       % "Erhält ein initiierender Prozess von seinem rechten Nachbarn die Anfrage nach der Terminierung (vote), meldet er die Terminierung dem Koordinator."
       % Kann mit dieser Schnittstelle nicht sichergestellt werden, ob die Nachricht vom rechten Nachbarn kam.
@@ -95,7 +116,7 @@ process(State, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVot
           NewState = voted,
           log(Name, "ggt:~p (~s)::transition to state ~s:(~s)~n", [Name, State, NewState, timeMilliSecond()])
       end,
-      process(NewState, Name, Nameservice, Mi, Left, Right, Coord, CanVote, NewSuccessfulVotes, Timer, LastMi, Ttw, Ttt);
+      process(NewState, Calculator, Name, Nameservice, Mi, Left, Right, Coord, CanVote, NewSuccessfulVotes, Timer, LastMi, Ttw, Ttt);
     terminate ->
       if
         CanVote =:= true ->
@@ -105,7 +126,7 @@ process(State, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVot
         true ->
           NewCanVote = CanVote
       end,
-      process(voting, Name, Nameservice, Mi, Left, Right, Coord, NewCanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt);
+      process(voting, Calculator, Name, Nameservice, Mi, Left, Right, Coord, NewCanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt);
     {calc_done, NewMi} ->
       if
         Mi == NewMi ->
@@ -116,10 +137,10 @@ process(State, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVot
           NewTimer = reset_timer(Name, none, Ttt, terminate),
           send_mi_to_neighbours(Name, NewMi, Left, Right)
       end,
-      process(processing, Name, Nameservice, NewMi, Left, Right, Coord, true, SuccessfulVotes, NewTimer, timestamp_micro(), Ttw, Ttt);
+      process(processing, Calculator, Name, Nameservice, NewMi, Left, Right, Coord, true, SuccessfulVotes, NewTimer, timestamp_micro(), Ttw, Ttt);
     Other ->
       log(Name, "Unknown: ~p~n", [Other]),
-      process(State, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt)
+      process(State, Calculator, Name, Nameservice, Mi, Left, Right, Coord, CanVote, SuccessfulVotes, Timer, LastMi, Ttw, Ttt)
   end.
 
 send_mi_to_neighbours(Name, Mi, Left, Right) ->
@@ -128,19 +149,6 @@ send_mi_to_neighbours(Name, Mi, Left, Right) ->
   log(Name, "ggt:~p (processing)::sending mi=~b to neighbours:: l=~p,r=~p:(~s)~n", [Name, Mi, LeftName, RightName, timeMilliSecond()]),
   Left ! {?SEND, Mi},
   Right ! {?SEND, Mi}.
-
-calc_ggt(Parent, Name, Mi, Y, Ttw) ->
-  if
-    Y < Mi ->
-      log(Name, "ggt:~p (processing)::calculation start:: calculating new ggt:: mi=~b, y=~b::duration ~b(s):(~s)~n", [Name, Mi, Y, Ttw, timeMilliSecond()]),
-      sleep(Ttw * 1000),
-      NewMi = ((Mi - 1) rem Y) + 1,
-      log(Name, "ggt:~p (processing)::calculation done:: changes mi=~b to ~b:(~s)~n", [Name, Mi, NewMi, timeMilliSecond()]);
-    true ->
-      NewMi = Mi,
-      log(Name, "ggt:~p (processing)::no ggt calculation reason:: ~b>=~b:(~s)~n", [Name, Y, Mi, timeMilliSecond()])
-  end,
-  Parent ! {calc_done, NewMi}.
 
 reset_timer(Name, Timer, Ttt, Message) ->
   if
